@@ -1,4 +1,4 @@
-streamlit>=1.42
+streamlit[auth]>=1.42
 pandas>=2.1
 gspread>=6.0
 google-auth>=2.30
