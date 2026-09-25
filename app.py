@@ -7,7 +7,7 @@ Add a row to Sources -> the new salesperson appears on the dashboard.
 """
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import altair as alt
@@ -159,6 +159,46 @@ def render_table(g, label, key, total_label="Subtotal"):
     st.dataframe(t, hide_index=True, use_container_width=True, key=key)
 
 
+def glance_table(df, label, key):
+    """Small, always-sorted-by-value table for the Today/This Month snapshot (no chart, no filters)."""
+    if df.empty:
+        st.caption("No sales yet.")
+        return
+    g = breakdown(df, label, label, False)
+    render_table(g, label, key, "Total")
+
+
+def glance_section(base, names):
+    """Fixed overview: today's and this month's sales, by salesperson and by course. Ignores all sidebar filters."""
+    today = pd.Timestamp(datetime.now(ZoneInfo("Asia/Kolkata")).date())
+    today_df = base[base.date == today]
+    month_df = base[(base.date.dt.year == today.year) & (base.date.dt.month == today.month)]
+
+    st.subheader("Today & This Month at a Glance")
+    a, b, c, d = st.columns(4)
+    a.metric("Today's Sales", len(today_df))
+    b.metric("Today's Value", inr(today_df.value.sum()) if len(today_df) else "Rs 0")
+    c.metric("This Month's Sales", len(month_df))
+    d.metric("This Month's Value", inr(month_df.value.sum()) if len(month_df) else "Rs 0")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Today - by Salesperson**")
+        glance_table(today_df, "Salesperson", "glance-today-person")
+    with c2:
+        st.markdown("**Today - by Course**")
+        glance_table(today_df, "Course", "glance-today-course")
+
+    c3, c4 = st.columns(2)
+    with c3:
+        st.markdown("**This Month - by Salesperson**")
+        glance_table(month_df, "Salesperson", "glance-month-person")
+    with c4:
+        st.markdown("**This Month - by Course**")
+        glance_table(month_df, "Course", "glance-month-course")
+    st.divider()
+
+
 def person_view(df, key, asc):
     n, v = len(df), df.value.sum()
     a, b, c = st.columns(3)
@@ -173,7 +213,7 @@ def person_view(df, key, asc):
         with tab:
             g = breakdown(df, label, sort, asc)
             chart = alt.Chart(g).mark_bar().encode(
-                x=alt.X(f"{label}:N", sort=None, title=None, axis=alt.Axis(labelAngle=-45)),
+                x=alt.X(f"{label}:N", sort=None, title=None, axis=alt.Axis(labelAngle=-90, labelOverlap=False, labelFontSize=9)),
                 y=alt.Y("Value:Q", title="Sale Value (Rs)"), tooltip=[label, "Sales", "Value"])
             st.altair_chart(chart, use_container_width=True, key=f"{key}-{label}-chart")
             render_table(g, label, f"{key}-{label}-table", "Total" if label == "Course" else "Subtotal")
@@ -223,21 +263,33 @@ def main():
 
     with st.sidebar:
         st.header("Filters")
+        incl_opt = st.checkbox("Include opted-out sales", value=False)
+
+    base = data if incl_opt else data[~data.opted_out]
+    glance_section(base, names)
+
+    with st.sidebar:
         dmin, dmax = data.date.min().date(), data.date.max().date()
-        rng = st.date_input("Date range", (dmin, dmax), min_value=dmin, max_value=dmax)
+        today_date = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+        preset = st.radio("Date range", ["Today", "Last 2 days", "Last 3 days", "Custom"], index=3)
+        if preset == "Today":
+            rng = (today_date, today_date)
+        elif preset == "Last 2 days":
+            rng = (today_date - timedelta(days=1), today_date)
+        elif preset == "Last 3 days":
+            rng = (today_date - timedelta(days=2), today_date)
+        else:
+            rng = st.date_input("Custom range", (dmin, dmax), min_value=dmin, max_value=dmax)
         picked = st.multiselect("Salespersons", names, default=names)
         newest = st.radio("Sort by date", ["Oldest first", "Newest first"]) == "Newest first"
-        incl_opt = st.checkbox("Include opted-out sales", value=False)
     if len(rng) != 2:
         st.info("Pick both a start and an end date.")
         st.stop()
 
-    f = data[data.date.between(pd.Timestamp(rng[0]), pd.Timestamp(rng[1])) & data.Salesperson.isin(picked)]
-    if not incl_opt:
-        f = f[~f.opted_out]
+    f = base[base.date.between(pd.Timestamp(rng[0]), pd.Timestamp(rng[1])) & base.Salesperson.isin(picked)]
     asc = not newest
 
-    st.subheader("Executive Summary")
+    st.subheader("Filtered Report")
     s = f.groupby("Salesperson").agg(Sales=("value", "size"), Value=("value", "sum")).reindex(picked).fillna(0)
     tot = s.Value.sum()
     summary = pd.DataFrame({
