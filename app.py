@@ -13,11 +13,17 @@ from zoneinfo import ZoneInfo
 import altair as alt
 import gspread
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 from google.oauth2.service_account import Credentials
 
 COURSE_ORDER = ["MW", "DSP", "PV", "CR", "CDM", "RA", "MC", "SAS"]
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+PALETTE = ["#378ADD", "#D4537E", "#1D9E75", "#BA7517", "#7F77DD", "#D85A30", "#5DCAA5", "#993C1D"]
+
+
+def color_for(names, name):
+    return PALETTE[names.index(name) % len(PALETTE)] if name in names else "#888780"
 
 
 # ---------- helpers ----------
@@ -159,6 +165,43 @@ def render_table(g, label, key, total_label="Subtotal"):
     st.dataframe(t, hide_index=True, use_container_width=True, key=key)
 
 
+# ---------- look & feel ----------
+CSS = """
+<style>
+section[data-testid="stSidebar"] {background-color:#0B1220;}
+section[data-testid="stSidebar"] * {color:#E5E7EB !important;}
+section[data-testid="stSidebar"] .stButton button {background:#1D9E75;border:none;color:#fff !important;}
+section[data-testid="stSidebar"] hr {border-color:#1F2937;}
+div[data-testid="stMetric"] {background:var(--surface-1, #F1EFE8);border-radius:12px;padding:14px 16px;}
+.kpi-row {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px;}
+.kpi-card {background:var(--surface-1, #F1EFE8);border-radius:12px;padding:14px;display:flex;gap:10px;align-items:center;}
+.kpi-icon {width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;font-weight:600;color:#fff;}
+.kpi-text .kpi-label {font-size:12px;color:#6B7280;margin:0;}
+.kpi-text .kpi-value {font-size:18px;font-weight:600;margin:2px 0 0;}
+.stTabs [data-baseweb="tab-list"] {gap:4px;}
+.stTabs [data-baseweb="tab"] {background:var(--surface-1, #F1EFE8);border-radius:8px;padding:6px 14px;}
+</style>
+"""
+
+
+def kpi_card(icon, bg, label, value):
+    return (f'<div class="kpi-card"><div class="kpi-icon" style="background:{bg};">{icon}</div>'
+            f'<div class="kpi-text"><p class="kpi-label">{label}</p><p class="kpi-value">{value}</p></div></div>')
+
+
+def kpi_row(cards):
+    st.markdown('<div class="kpi-row">' + "".join(cards) + "</div>", unsafe_allow_html=True)
+
+
+def donut_chart(g, label, key):
+    colors = [color_for(list(g[label]), n) for n in g[label]]
+    fig = go.Figure(go.Pie(labels=g[label], values=g.Value, hole=0.6, marker=dict(colors=colors),
+                            textinfo="none", hovertemplate="%{label}: Rs %{value:,.0f}<extra></extra>"))
+    fig.update_layout(showlegend=True, margin=dict(l=0, r=0, t=0, b=0), height=220,
+                       legend=dict(orientation="h", yanchor="bottom", y=-0.25))
+    st.plotly_chart(fig, use_container_width=True, key=key)
+
+
 def glance_table(df, label, key):
     """Small, always-sorted-by-value table for the Today/This Month snapshot (no chart, no filters)."""
     if df.empty:
@@ -175,11 +218,13 @@ def glance_section(base, names):
     month_df = base[(base.date.dt.year == today.year) & (base.date.dt.month == today.month)]
 
     st.subheader("Today & This Month at a Glance")
-    a, b, c, d = st.columns(4)
-    a.metric("Today's Sales", len(today_df))
-    b.metric("Today's Value", inr(today_df.value.sum()) if len(today_df) else "Rs 0")
-    c.metric("This Month's Sales", len(month_df))
-    d.metric("This Month's Value", inr(month_df.value.sum()) if len(month_df) else "Rs 0")
+    st.caption("Always shows today and this month, not affected by the filters below.")
+    kpi_row([
+        kpi_card("&#8377;", "#185FA5", "Today's value", inr(today_df.value.sum()) if len(today_df) else "Rs 0"),
+        kpi_card("#", "#534AB7", "Today's sales", len(today_df)),
+        kpi_card("&#8599;", "#0F6E56", "This month's value", inr(month_df.value.sum()) if len(month_df) else "Rs 0"),
+        kpi_card("&#128100;", "#854F0B", "This month's sales", len(month_df)),
+    ])
 
     c1, c2 = st.columns(2)
     with c1:
@@ -239,19 +284,23 @@ def gate():
 
 def main():
     st.set_page_config(page_title="Combined CRM Sales Report", page_icon="📊", layout="wide")
+    st.markdown(CSS, unsafe_allow_html=True)
     gate()
     sources, _ = load_config()
     data, names, issues, loaded_at = load_all(sources)
 
-    st.title("Combined CRM Sales Report")
-    st.caption(f"Data as of {loaded_at}  |  Sources: {', '.join(names) or 'none'}")
-
     with st.sidebar:
+        st.markdown("### &#128202; CRM Analytics")
+        st.caption("Combined sales dashboard")
+        st.divider()
         st.write(f"Signed in as **{st.user.email}**")
         st.button("Log out", on_click=st.logout)
         if st.button("Refresh data now"):
             st.cache_data.clear()
             st.rerun()
+
+    st.title("Combined CRM Sales Report")
+    st.caption(f"Data as of {loaded_at}  |  Sources: {', '.join(names) or 'none'}")
 
     if issues:
         with st.expander(f"Data checks ({len(issues)})", expanded=any("Could not" in i for i in issues)):
@@ -262,6 +311,7 @@ def main():
         st.stop()
 
     with st.sidebar:
+        st.divider()
         st.header("Filters")
         incl_opt = st.checkbox("Include opted-out sales", value=False)
 
@@ -290,6 +340,7 @@ def main():
     asc = not newest
 
     st.subheader("Filtered Report")
+    st.caption(f"{preset} - {rng[0]:%d %b %Y} to {rng[1]:%d %b %Y}")
     s = f.groupby("Salesperson").agg(Sales=("value", "size"), Value=("value", "sum")).reindex(picked).fillna(0)
     tot = s.Value.sum()
     summary = pd.DataFrame({
@@ -299,7 +350,15 @@ def main():
         "Share of Total": [f"{v / tot * 100:.1f}%" if tot else "-" for v in s.Value]})
     n_all = int(s.Sales.sum())
     summary.loc[len(summary)] = ["TOTAL (All)", n_all, inr(tot), inr(tot / n_all) if n_all else "-", "100%"]
-    st.dataframe(summary, hide_index=True, use_container_width=True)
+
+    t1, t2 = st.columns([2, 1])
+    with t1:
+        st.dataframe(summary, hide_index=True, use_container_width=True)
+    with t2:
+        if tot:
+            donut_chart(s.reset_index().rename(columns={"index": "Salesperson"}), "Salesperson", "summary-donut")
+        else:
+            st.caption("No sales in this range yet.")
 
     tabs = st.tabs(["Overall (All)"] + picked)
     with tabs[0]:
