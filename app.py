@@ -174,13 +174,13 @@ section[data-testid="stSidebar"] {background-color:#0B1220;}
 section[data-testid="stSidebar"] * {color:#E5E7EB !important;}
 section[data-testid="stSidebar"] .stButton button {background:#1D9E75;border:none;color:#fff !important;}
 section[data-testid="stSidebar"] hr {border-color:#1F2937;}
-div[data-testid="stMetric"] {background:#F1EFE8;border-radius:12px;padding:14px 16px;}
+div[data-testid="stMetric"] {background:var(--secondary-background-color);border-radius:12px;padding:14px 16px;}
 .kpi-row {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px;}
-.kpi-card {background:#F1EFE8;border-radius:12px;padding:14px;display:flex;gap:10px;align-items:center;min-width:0;}
+.kpi-card {background:var(--secondary-background-color);border-radius:12px;padding:14px;display:flex;gap:10px;align-items:center;min-width:0;}
 .kpi-icon {width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;font-weight:600;color:#fff;}
 .kpi-text {min-width:0;overflow-wrap:normal;word-break:normal;}
-.kpi-text .kpi-label {font-size:12px;color:#6B7280 !important;margin:0;white-space:normal;}
-.kpi-text .kpi-value {font-size:18px;font-weight:600;color:#111827 !important;margin:2px 0 0;white-space:normal;}
+.kpi-text .kpi-label {font-size:12px;color:var(--text-color);opacity:0.65;margin:0;white-space:normal;}
+.kpi-text .kpi-value {font-size:18px;font-weight:600;color:var(--text-color);margin:2px 0 0;white-space:normal;}
 @media (max-width: 700px) {
   .kpi-row {grid-template-columns:repeat(2,minmax(0,1fr));}
   .kpi-card {padding:10px;gap:8px;}
@@ -188,7 +188,7 @@ div[data-testid="stMetric"] {background:#F1EFE8;border-radius:12px;padding:14px 
   .kpi-text .kpi-value {font-size:15px;}
 }
 .stTabs [data-baseweb="tab-list"] {gap:4px;}
-.stTabs [data-baseweb="tab"] {background:#F1EFE8;border-radius:8px;padding:6px 14px;}
+.stTabs [data-baseweb="tab"] {background:var(--secondary-background-color);border-radius:8px;padding:6px 14px;}
 </style>
 """
 
@@ -214,9 +214,13 @@ def kpi_row(cards):
 
 def donut_chart(g, label, key):
     colors = [color_for(list(g[label]), n) for n in g[label]]
+    dark = st.get_option("theme.base") == "dark"
+    font_color = "#E5E7EB" if dark else "#111827"
     fig = go.Figure(go.Pie(labels=g[label], values=g.Value, hole=0.6, marker=dict(colors=colors),
                             textinfo="none", hovertemplate="%{label}: Rs %{value:,.0f}<extra></extra>"))
     fig.update_layout(showlegend=True, margin=dict(l=0, r=0, t=0, b=0), height=220,
+                       paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                       font=dict(color=font_color),
                        legend=dict(orientation="h", yanchor="bottom", y=-0.25))
     st.plotly_chart(fig, use_container_width=True, key=key)
 
@@ -269,9 +273,9 @@ def glance_section(base, names):
     ])
 
     if not month_df.empty:
-        st.markdown('<div style="background:#F1EFE8;border-radius:12px;padding:12px 16px;margin-bottom:14px;">'
-                     + '<p style="font-size:13px;font-weight:600;margin:0 0 6px;color:#111827;">&#10024; Key Insights</p>'
-                     + "".join(f'<p style="font-size:13px;margin:4px 0;color:#111827;">&#8226; {b}</p>' for b in key_insights(month_df, names))
+        st.markdown('<div style="background:var(--secondary-background-color);border-radius:12px;padding:12px 16px;margin-bottom:14px;">'
+                     + '<p style="font-size:13px;font-weight:600;margin:0 0 6px;color:var(--text-color);">&#10024; Key Insights</p>'
+                     + "".join(f'<p style="font-size:13px;margin:4px 0;color:var(--text-color);">&#8226; {b}</p>' for b in key_insights(month_df, names))
                      + "</div>", unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
